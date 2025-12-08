@@ -7,6 +7,14 @@ from sam3.model.vitdet import ViT
 from sam3.model.position_encoding import PositionEmbeddingSine
 from sam3.model.necks import Sam3DualViTDetNeck
 from sam3.model.vl_combiner import SAM3VLBackbone
+from sam3.model.encoder import TransformerEncoderFusion, TransformerEncoderLayer
+from sam3.model.decoder import (
+    TransformerDecoder,
+    TransformerDecoderLayer
+)
+from sam3.model.model_misc import (
+    MultiheadAttentionWrapper as MultiheadAttention,
+)
 
 
 def _create_position_encoding(precompute_resolution=None):
@@ -62,6 +70,75 @@ def _create_vl_backbone(vit_neck, text_encoder):
     """Create visual-language backbone."""
     return SAM3VLBackbone(visual=vit_neck, text=text_encoder, scalp=1)
 
+def _create_transformer_encoder() -> TransformerEncoderFusion:
+    """Create transformer encoder with its layer."""
+    encoder_layer = lambda: TransformerEncoderLayer(
+        activation="relu",
+        d_model=256,
+        dim_feedforward=2048,
+        dropout=0.1,
+        pos_enc_at_attn=True,
+        pos_enc_at_cross_attn_keys=False,
+        pos_enc_at_cross_attn_queries=False,
+        pre_norm=True,
+        self_attention=MultiheadAttention(
+            num_heads=8,
+            dims=256,
+        ),
+        cross_attention=MultiheadAttention(
+            num_heads=8,
+            dims=256,
+        ),
+    )
+
+    encoder = TransformerEncoderFusion(
+        layer=encoder_layer,
+        num_layers=6,
+        d_model=256,
+        num_feature_levels=1,
+        frozen=False,
+        use_act_checkpoint=True,
+        add_pooled_text_to_img_feat=False,
+        pool_text_with_mask=True,
+    )
+    return encoder
+
+
+def _create_transformer_decoder() -> TransformerDecoder:
+    """Create transformer decoder with its layer."""
+    decoder_layer = lambda: TransformerDecoderLayer(
+        activation="relu",
+        d_model=256,
+        dim_feedforward=2048,
+        dropout=0.1,
+        cross_attention=MultiheadAttention(
+            num_heads=8,
+            dims=256,
+        ),
+        n_heads=8,
+        use_text_cross_attention=True,
+    )
+
+    decoder = TransformerDecoder(
+        layer=decoder_layer,
+        num_layers=6,
+        num_queries=200,
+        return_intermediate=True,
+        box_refine=True,
+        num_o2m_queries=0,
+        dac=True,
+        boxRPB="log",
+        d_model=256,
+        frozen=False,
+        interaction_layer=None,
+        dac_use_selfatt_ln=True,
+        resolution=1008,
+        stride=14,
+        use_act_checkpoint=True,
+        presence_token=True,
+    )
+    return decoder
+
 def _create_sam3_model(
     backbone,
     # transformer,
@@ -100,6 +177,11 @@ def _create_vision_backbone(
     )
     return vit_neck
 
+def _create_sam3_transformer(has_presence_token: bool = True):
+    # encoder
+    # decoder
+    # return wrapper
+    pass
 def load_checkpoint(model, checkpoint_path):
     weights = mx.load(checkpoint_path)
     try:
@@ -146,6 +228,9 @@ def build_sam3_image_model(
     text_encoder = _create_text_encoder(bpe_path)
 
     backbone = _create_vl_backbone(vision_encoder, text_encoder)
+
+    # TODO: detr encoder, decoder
+    transformer = _create_sam3_transformer()
 
 
     model = _create_sam3_model(backbone)

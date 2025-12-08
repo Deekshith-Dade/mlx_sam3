@@ -6,7 +6,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import mlx.core as mx
 import mlx.nn as nn
 
-from .model_misc import LayerScale, Mlp, DropPath
+from .model_misc import Mlp, LayerScale , DropPath
 
 def polar(a, b):
     return (a * mx.exp(1j * b)).astype(mx.complex64)
