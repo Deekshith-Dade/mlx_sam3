@@ -149,12 +149,12 @@ def get_abs_pos(
             scale_h = h / current_h
             scale_w = w / current_w
             # TODO: Using linear (bilinear) interpolation, CUBIC interpolation in torch SAM3
-            new_abs_pos = mx.upsample(
-                new_abs_pos.transpose(0, 2, 3, 1), 
+            upsample_fn = nn.Upsample(
                 scale_factor=(scale_h, scale_w), 
                 mode='linear', 
                 align_corners=False
-            ).transpose(0, 3, 1, 2)
+            )
+            new_abs_pos = upsample_fn(new_abs_pos.transpose(0, 2, 3, 1)).transpose(0, 3, 1, 2)
         
         if not retain_cls_token:
             return new_abs_pos.transpose(0, 2, 3, 1)

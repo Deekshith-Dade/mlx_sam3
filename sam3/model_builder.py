@@ -10,6 +10,7 @@ from sam3.model.vitdet import ViT
 from sam3.model.position_encoding import PositionEmbeddingSine
 from sam3.model.necks import Sam3DualViTDetNeck
 from sam3.model.vl_combiner import SAM3VLBackbone
+from sam3.model.maskformer_segmentation import PixelDecoder, UniversalSegmentationHead
 from sam3.model.encoder import TransformerEncoderFusion, TransformerEncoderLayer
 from sam3.model.decoder import (
     TransformerDecoder,
@@ -158,6 +159,33 @@ def _create_dot_product_scoring():
     )
     return DotProductScoring(d_model=256, d_proj=256, prompt_mlp=prompt_mlp)
 
+def _create_segmentation_head():
+    # pixel_decoder
+    pixel_decoder = PixelDecoder(
+        num_upsampling_stages=3,
+        interpolation_mode="nearest",
+        hidden_dim=256,
+    )
+
+    # cross_attend_prompt
+    cross_attend_prompt = MultiheadAttention(
+        num_heads=8,
+        dims=256,
+    )
+
+    # segmentation_head
+    segmentation_head = UniversalSegmentationHead(
+        hidden_dim=256,
+        upsampling_stages=3,
+        aux_masks=False,
+        presence_head=False,
+        dot_product_scorer=None,
+        cross_attend_prompt=cross_attend_prompt,
+        pixel_decoder=pixel_decoder,
+    )
+    return segmentation_head
+
+
 def _create_sam3_model(
     backbone,
     transformer,
@@ -185,14 +213,14 @@ def _create_text_encoder(bpe_path: str) -> VETextEncoder:
 def _create_vision_backbone(
     compile_mode=None,
     enable_inst_interactivity=True
-): # -> Sam3DualVitDetNeck
+) -> Sam3DualViTDetNeck:
 
     position_encoding = _create_position_encoding(precompute_resolution=1008)
 
     # TODO: vit_backbone, look about compile_mode
     vit_backbone = _create_vit_backbone(compile_mode=compile_mode)
 
-    vit_neck = _create_vit_neck(
+    vit_neck: Sam3DualViTDetNeck = _create_vit_neck(
         position_encoding,
         vit_backbone,
         enable_inst_interactivity=enable_inst_interactivity
@@ -257,10 +285,22 @@ def build_sam3_image_model(
 
     dot_product_scoring = _create_dot_product_scoring()
 
+    # segmentation_head
+    segmentation_head = (
+        _create_segmentation_head()
+        if enable_segmentation
+        else None
+    )
+
+    # geometry_encoder
+
+    # enable interactivity ? tracker, sam3interactiveimagepredictor
+
 
     model = _create_sam3_model(
         backbone,
         transformer,
+        segmentation_head=segmentation_head,
         dot_prod_scoring=dot_product_scoring
     )
 

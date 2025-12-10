@@ -12,6 +12,9 @@ class Sam3Image(nn.Module):
         self,
         backbone: SAM3VLBackbone,
         transformer,
+        input_geometry_encoder=None,
+        segmentation_head=None,
+        num_feature_levels=1,
         dot_prod_scoring=None,
 
         use_dot_prod_scoring=True,
@@ -21,6 +24,8 @@ class Sam3Image(nn.Module):
         self.backbone = backbone
         self.transformer = transformer
         self.hidden_dim = transformer.d_model
+        self.num_feature_levels = num_feature_levels
+        self.segmentation_head = self.segmentation_head
 
         # verify the number of queries for O2O and O2M
         num_o2o_static = self.transformer.decoder.num_queries
