@@ -291,7 +291,7 @@ def gen_sineembed_for_position(pos_array, num_feats=256):
     scale = 2 * math.pi
     dim_t = mx.arange(num_feats, dtype=mx.float32)
     # TODO: rounding mode?
-    dim_t = 10000 * (2 * (mx.divide(dim_t, 2)) / num_feats)
+    dim_t = 10000 ** (2 * mx.floor(mx.divide(dim_t, 2)) / num_feats)
     x_embed = pos_array[:, :, 0] * scale
     y_embed = pos_array[:, :, 1] * scale
     pos_x = x_embed[:, :, None] / dim_t

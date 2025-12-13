@@ -175,7 +175,6 @@ class PixelDecoder(nn.Module):
 
         backbone_feats = [x.transpose(0, 2, 3, 1) for x in backbone_feats]
 
-        breakpoint()
         prev_fpn = backbone_feats[-1]
         fpn_feats = backbone_feats[:-1]
         for layer_idx, bb_feat in enumerate(fpn_feats[::-1]):

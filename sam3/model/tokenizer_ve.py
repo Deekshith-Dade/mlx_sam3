@@ -244,7 +244,7 @@ class SimpleTokenizer(object):
             [self.sot_token_id] + self.encode(text) + [self.eot_token_id]
             for text in texts
         ]
-        result = mx.zeros(len(all_tokens), context_length, dtype=mx.int64)
+        result = mx.zeros((len(all_tokens), context_length), dtype=mx.int64)
         for i, tokens in enumerate(all_tokens):
             if len(tokens) > context_length:
                 tokens = tokens[:context_length]  # Truncate

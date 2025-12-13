@@ -282,15 +282,13 @@ def _create_sam3_transformer(has_presence_token: bool = True):
     return TransformerWrapper(encoder=encoder, decoder=decoder, d_model=256)
 
 def load_checkpoint(model, checkpoint_path):
-    breakpoint()
     weights = mx.load(checkpoint_path)
     try:
-        model.load_weights(weights, strict=True)
+        model.load_weights(weights, strict=False)
         mx.eval(model.parameters())
     except ValueError as e:
         msg = str(e)
         
-        breakpoint()
         expected_missing = [
             "attn_mask", 
             "position_encoding.cache"
@@ -310,7 +308,7 @@ def build_sam3_image_model(
     checkpoint_path=None,
     # load_from_HF=True,
     enable_segmentation=True,
-    enable_inst_interactivity=True,
+    enable_inst_interactivity=False,
     compile=False
 ):
     # create models here
@@ -357,6 +355,7 @@ def build_sam3_image_model(
         dot_prod_scoring=dot_product_scoring
     )
 
-    breakpoint()
     load_checkpoint(model, checkpoint_path)
-    breakpoint()
+    model.eval()
+
+    return model

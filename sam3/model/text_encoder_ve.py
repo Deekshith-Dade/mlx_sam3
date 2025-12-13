@@ -68,9 +68,9 @@ class ResidualAttentionBlock(nn.Module):
         if attn_mask is not None:
             # Leave boolean masks as is
             if not attn_mask.dtype == mx.bool_:
-                attn_mask = attn_mask.to(q_x.dtype)
+                attn_mask = attn_mask.astype(q_x.dtype)
 
-        return self.attn(q_x, k_x, v_x, need_weights=False, attn_mask=attn_mask)[0]
+        return self.attn(q_x, k_x, v_x, mask=attn_mask)
 
     def __call__(
         self,
@@ -129,7 +129,7 @@ class Transformer(nn.Module):
         #     if self.grad_checkpointing:
         #         torch._dynamo.config.optimize_ddp = False
 
-    def forward(
+    def __call__(
         self,
         x: mx.array,
         attn_mask: Optional[mx.array] = None,
@@ -231,7 +231,7 @@ class TextTransformer(nn.Module):
         mask = mx.triu(mask, k=1)
         return mask
 
-    def forward(
+    def __call__(
         self, text: mx.array
     ) -> Union[mx.array, Tuple[mx.array, mx.array]]:
         seq_len = text.shape[1]
@@ -300,7 +300,7 @@ class VETextEncoder(nn.Module):
 
             # Encode the text
             tokenized = self.tokenizer(text, context_length=self.context_length)  # [b, seq_len]
-            text_attention_mask = (tokenized != 0).bool()
+            text_attention_mask = (tokenized != 0).astype(mx.bool_)
 
             # manually embed the tokens
             inputs_embeds = self.encoder.token_embedding(

@@ -11,3 +11,5 @@ wheels/
 
 # Ignore Modified Weights
 sam3-mod-weights/
+vit_block/
+*.jpg

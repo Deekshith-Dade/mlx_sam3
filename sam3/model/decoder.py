@@ -375,7 +375,6 @@ class TransformerDecoder(nn.Module):
         #     assert B.shape[2:] == (num_queries, H * W)
         return B
 
-
     def __call__(
         self,
         tgt,

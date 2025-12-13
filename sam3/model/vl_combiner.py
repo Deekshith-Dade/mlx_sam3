@@ -102,9 +102,9 @@ class SAM3VLBackbone(nn.Module):
             ]
         
         text_memory = text_memroy[: ,:len(captions)]
-        text_attention_mask = text_attention_mask[:, len(captions)]
+        text_attention_mask = text_attention_mask[: len(captions)]
         text_embeds = text_embeds[:, : len(captions)]
-        output["langugage_features"] = text_memory
+        output["language_features"] = text_memory
         output["language_mask"] = text_attention_mask
         output["language_embeds"] = (
             text_embeds
