@@ -2,6 +2,21 @@ import mlx.core as mx
 import mlx.nn as nn
 from sam3.model.vitdet import Attention, ViT
 
+def _compare_arrays(self, mlx_out, i):
+    import numpy as np
+    prefix = "/Users/deekshith/Documents/Projects/vision-models/mlx_sam3/vit_block"
+    torch_out = mx.array(np.load(f"{prefix}/state_snapshot.npy"))
+    # diff = mx.abs(torch_out - mlx_out)
+    # print(f"Max Diff:  {diff.max().item():.6f}")
+    # print(f"Mean Diff: {diff.mean().item():.6f}")
+
+    # Metric B: Cosine Similarity (The "Structure" Check)
+    # Use this since your means/stds are drifting. 
+    # If this is 0.9999+, your model is structurally perfect, just scaled differently.
+    similarity = (torch_out * mlx_out).sum() / (mx.linalg.norm(torch_out) * mx.linalg.norm(mlx_out))
+    print(f"Cosine Sim: {similarity.item():.6f}")
+    return torch_out
+
 def main():
     print("Hello, World!")
 

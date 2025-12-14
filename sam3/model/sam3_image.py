@@ -245,6 +245,7 @@ class Sam3Image(nn.Module):
                 apply_dac=apply_dac,
             )
         )
+        breakpoint()
         hs = hs.transpose(0, 2, 1, 3) # seq-first to batch_first
         reference_boxes = reference_boxes.transpose(0, 2, 1, 3)
         if dec_presence_out is not None:

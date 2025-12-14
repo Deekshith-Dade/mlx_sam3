@@ -45,7 +45,7 @@ class Scale4FN(nn.Module):
         x = x.transpose(0, 3, 1, 2)
         return x
 
-class Scal2FN(nn.Module):
+class Scale2FN(nn.Module):
     def __init__(self, in_channels: int, d_model: int, use_bias: bool = True):
         super().__init__()
         self.dconv_2x2 = nn.ConvTranspose2d(
@@ -72,7 +72,7 @@ class Scal2FN(nn.Module):
     def __call__(self, x):
         x = x.transpose(0, 2, 3, 1)
         x = self.dconv_2x2(x)
-        x = self.gelu(x)
+        # x = self.gelu(x)
         x = self.conv_1x1(x)
         x = self.conv_3x3(x)
         x = x.transpose(0, 3, 1, 2)
@@ -168,7 +168,7 @@ class Sam3DualViTDetNeck(nn.Module):
                 ))
             elif scale == 2.0:
                 convs.append(
-                    Scal2FN(
+                    Scale2FN(
                         in_channels=dim,
                         d_model=d_model,
                         use_bias=use_bias

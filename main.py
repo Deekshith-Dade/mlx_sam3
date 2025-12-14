@@ -14,7 +14,7 @@ def main():
     image = Image.open(image_path)
     inference_state = processor.set_image(image)
     # Prompt the model with text
-    prompt = "lemons"
+    prompt = "white bowl"
     output = processor.set_text_prompt(
     state=inference_state, prompt=prompt
     )

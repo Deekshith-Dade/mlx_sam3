@@ -12,7 +12,8 @@ def polar(a, b):
     return (a * mx.exp(1j * b)).astype(mx.complex64)
 
 def real(x: mx.array) -> mx.array:
-    return mx.view(x, mx.float32)[..., ::2]
+    parts = mx.view(x, mx.float32).reshape(*x.shape, 2)
+    return parts.reshape(*x.shape[:-1], -1)
 
 def view_as_complex(x: mx.array) -> mx.array:
     assert x.shape[-1] % 2 == 0
@@ -60,7 +61,6 @@ def apply_rotary_enc(
     freqs_cis: mx.array,
     repeat_freqs_k: bool = False
 ) -> Tuple[mx.array, mx.array]:
-    breakpoint()
     xq_ = view_as_complex(xq)
     xk_ = (view_as_complex(xk)
            if xk.shape[-2] != 0
@@ -152,7 +152,7 @@ def get_abs_pos(
             # TODO: Using linear (bilinear) interpolation, CUBIC interpolation in torch SAM3
             upsample_fn = nn.Upsample(
                 scale_factor=(scale_h, scale_w), 
-                mode='linear', 
+                mode='cubic', 
                 align_corners=False
             )
             new_abs_pos = upsample_fn(new_abs_pos.transpose(0, 2, 3, 1)).transpose(0, 3, 1, 2)
@@ -306,7 +306,6 @@ class Attention(nn.Module):
         return apply_rotary_enc(q, k, freqs_cis=self.freqs_cis)
     
     def __call__(self, x: mx.array) -> mx.array:
-        breakpoint()
         s = 1 if self.cls_token else 0
         if x.ndim == 4:
             B, H, W, _ = x.shape
@@ -404,7 +403,7 @@ class Block(nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
         self.window_size = window_size
-    
+
     def __call__(self, x: mx.array) -> mx.array:
         shortcut = x
         x = self.norm1(x)
@@ -573,7 +572,6 @@ class ViT(nn.Module):
             m.bias = mx.zeros_like(m.bias)
 
     def __call__(self, x: mx.array) -> List[mx.array]:
-        breakpoint()
         x = self.patch_embed(x)
         h, w = x.shape[1], x.shape[2]
 
@@ -600,16 +598,10 @@ class ViT(nn.Module):
                 pass
             else:
                 x = blk(x)
-                # print(f"Mean: {i}: {x.mean().item()}")
-                # print(f"Argmax: {i}: {x.flatten().argmax()}")
-                if i in self.window_block_indexes:
-                    print("window_block")
-                self._compare_arrays(x, i)
                 
             if (i == self.full_attn_ids[-1]) or (
                 self.return_interm_layers and i in self.full_attn_ids
             ):
-                breakpoint()
                 if i == self.full_attn_ids[-1]:
                     x = self.ln_post(x)
                 
@@ -625,22 +617,9 @@ class ViT(nn.Module):
                 
                 outputs.append(feats)
             
-        breakpoint()
         return outputs
                         
-    def _compare_arrays(self, mlx_out, i):
-        import numpy as np
-        prefix = "/Users/deekshith/Documents/Projects/vision-models/mlx_sam3/vit_block"
-        torch_out = mx.array(np.load(f"{prefix}/torch_out_block_{i}.npy"))
-        # diff = mx.abs(torch_out - mlx_out)
-        # print(f"Max Diff:  {diff.max().item():.6f}")
-        # print(f"Mean Diff: {diff.mean().item():.6f}")
 
-        # Metric B: Cosine Similarity (The "Structure" Check)
-        # Use this since your means/stds are drifting. 
-        # If this is 0.9999+, your model is structurally perfect, just scaled differently.
-        similarity = (torch_out * mlx_out).sum() / (mx.linalg.norm(torch_out) * mx.linalg.norm(mlx_out))
-        print(f"Cosine Sim: {similarity.item():.6f}")
         
 
     def get_layer_id(self, layer_name: str) -> int:

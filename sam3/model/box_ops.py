@@ -71,26 +71,37 @@ def masks_to_boxes(masks):
 
     Returns a [N, 4] tensors, with the boxes in xyxy format
     """
-    if masks.numel() == 0:
-        return mx.zeros((0, 4))
+    # `masks` can be bool or float; we treat non-zero as foreground.
+    if masks.size == 0:
+        return mx.zeros((0, 4), dtype=mx.float32)
 
     h, w = masks.shape[-2:]
 
-    y = mx.arange(0, h, dtype=mx.float32, device=masks.device)
-    x = mx.arange(0, w, dtype=mx.float32, device=masks.device)
-    y, x = mx.meshgrid(y, x)
+    masks_bool = masks.astype(mx.bool_)
+    masks_f = masks_bool.astype(mx.float32)
 
-    x_mask = masks * x.unsqueeze(0)
-    x_max = x_mask.flatten(1).max(-1)[0] + 1
-    x_min = x_mask.masked_fill(~(masks.bool()), 1e8).flatten(1).min(-1)[0]
+    # Avoid meshgrid indexing differences across frameworks; build explicit HxW grids.
+    y = mx.arange(0, h, dtype=mx.float32)[:, None]  # (H, 1)
+    x = mx.arange(0, w, dtype=mx.float32)[None, :]  # (1, W)
+    y = mx.broadcast_to(y, (h, w))  # (H, W)
+    x = mx.broadcast_to(x, (h, w))  # (H, W)
 
-    y_mask = masks * y.unsqueeze(0)
-    y_max = y_mask.flatten(1).max(-1)[0] + 1
-    y_min = y_mask.masked_fill(~(masks.bool()), 1e8).flatten(1).min(-1)[0]
+    x_mask = masks_f * x[None, :, :]
+    y_mask = masks_f * y[None, :, :]
 
-    boxes = mx.stack([x_min, y_min, x_max, y_max], 1)
+    flat_x = x_mask.reshape(masks.shape[0], -1)
+    flat_y = y_mask.reshape(masks.shape[0], -1)
+    flat_m = masks_bool.reshape(masks.shape[0], -1)
+
+    x_max = mx.max(flat_x, axis=1) + 1
+    x_min = mx.min(mx.where(flat_m, flat_x, 1e8), axis=1)
+    y_max = mx.max(flat_y, axis=1) + 1
+    y_min = mx.min(mx.where(flat_m, flat_y, 1e8), axis=1)
+
+    boxes = mx.stack([x_min, y_min, x_max, y_max], axis=1)
     # Invalidate boxes corresponding to empty masks.
-    boxes = boxes * masks.flatten(-2).any(-1)
+    has_any = mx.any(flat_m, axis=1).astype(boxes.dtype)
+    boxes = boxes * has_any[:, None]
     return boxes
 
 
@@ -110,10 +121,10 @@ def box_iou(boxes1, boxes2):
 
     # boxes1: (..., N, 4) -> (..., N, 1, 2)
     # boxes2: (..., M, 4) -> (..., 1, M, 2)
-    lt = mx.max(boxes1[..., :, None, :2], boxes2[..., None, :, :2])
-    rb = mx.min(boxes1[..., :, None, 2:], boxes2[..., None, :, 2:])
+    lt = mx.maximum(boxes1[..., :, None, :2], boxes2[..., None, :, :2])
+    rb = mx.minimum(boxes1[..., :, None, 2:], boxes2[..., None, :, 2:])
 
-    wh = mx.clip((rb - lt), a_min=0)  # (..., N, M, 2)
+    wh = mx.clip((rb - lt), a_min=0, a_max=None)  # (..., N, M, 2)
     inter = wh[..., 0] * wh[..., 1]  # (..., N, M)
 
     union = area1[..., None] + area2[..., None, :] - inter
@@ -139,10 +150,10 @@ def generalized_box_iou(boxes1, boxes2):
 
     # boxes1: (..., N, 4) -> (..., N, 1, 2)
     # boxes2: (..., M, 4) -> (..., 1, M, 2)
-    lt = mx.min(boxes1[..., :, None, :2], boxes2[..., None, :, :2])
-    rb = mx.max(boxes1[..., :, None, 2:], boxes2[..., None, :, 2:])
+    lt = mx.minimum(boxes1[..., :, None, :2], boxes2[..., None, :, :2])
+    rb = mx.maximum(boxes1[..., :, None, 2:], boxes2[..., None, :, 2:])
 
-    wh = (rb - lt).clamp(min=0)  # (..., N, M, 2)
+    wh = mx.clip((rb - lt), a_min=0, a_max=None)  # (..., N, M, 2)
     area = wh[..., 0] * wh[..., 1]  # (..., N, M)
 
     return iou - (area - union) / area
@@ -157,16 +168,16 @@ def fast_diag_generalized_box_iou(boxes1, boxes2):
     box2_XY = boxes2[:, :2]
     # assert (box1_xy >= box1_XY).all()
     # assert (box2_xy >= box2_XY).all()
-    area1 = (box1_xy - box1_XY).prod(-1)
-    area2 = (box2_xy - box2_XY).prod(-1)
+    area1 = mx.prod((box1_xy - box1_XY), axis=-1)
+    area2 = mx.prod((box2_xy - box2_XY), axis=-1)
 
-    lt = mx.max(box1_XY, box2_XY)  # [N,2]
-    lt2 = mx.min(box1_XY, box2_XY)
-    rb = mx.min(box1_xy, box2_xy)  # [N,2]
-    rb2 = mx.max(box1_xy, box2_xy)
+    lt = mx.maximum(box1_XY, box2_XY)  # [N,2]
+    lt2 = mx.minimum(box1_XY, box2_XY)
+    rb = mx.minimum(box1_xy, box2_xy)  # [N,2]
+    rb2 = mx.maximum(box1_xy, box2_xy)
 
-    inter = (rb - lt).clamp(min=0).prod(-1)
-    tot_area = (rb2 - lt2).clamp(min=0).prod(-1)
+    inter = mx.prod(mx.clip((rb - lt), a_min=0, a_max=None), axis=-1)
+    tot_area = mx.prod(mx.clip((rb2 - lt2), a_min=0, a_max=None), axis=-1)
 
     union = area1 + area2 - inter
 
@@ -184,13 +195,13 @@ def fast_diag_box_iou(boxes1, boxes2):
     box2_XY = boxes2[:, :2]
     # assert (box1_xy >= box1_XY).all()
     # assert (box2_xy >= box2_XY).all()
-    area1 = (box1_xy - box1_XY).prod(-1)
-    area2 = (box2_xy - box2_XY).prod(-1)
+    area1 = mx.prod((box1_xy - box1_XY), axis=-1)
+    area2 = mx.prod((box2_xy - box2_XY), axis=-1)
 
-    lt = mx.max(box1_XY, box2_XY)  # [N,2]
-    rb = mx.min(box1_xy, box2_xy)  # [N,2]
+    lt = mx.maximum(box1_XY, box2_XY)  # [N,2]
+    rb = mx.minimum(box1_xy, box2_xy)  # [N,2]
 
-    inter = (rb - lt).clamp(min=0).prod(-1)
+    inter = mx.prod(mx.clip((rb - lt), a_min=0, a_max=None), axis=-1)
 
     union = area1 + area2 - inter
 
@@ -203,21 +214,21 @@ def box_xywh_inter_union(
     boxes1: mx.array, boxes2: mx.array
 ) -> Tuple[mx.array, mx.array]:
     # Asuumes boxes in xywh format
-    assert boxes1.size(-1) == 4 and boxes2.size(-1) == 4
+    assert boxes1.shape[-1] == 4 and boxes2.shape[-1] == 4
     boxes1 = box_xywh_to_xyxy(boxes1)
     boxes2 = box_xywh_to_xyxy(boxes2)
     box1_tl_xy = boxes1[..., :2]
     box1_br_xy = boxes1[..., 2:]
     box2_tl_xy = boxes2[..., :2]
     box2_br_xy = boxes2[..., 2:]
-    area1 = (box1_br_xy - box1_tl_xy).prod(-1)
-    area2 = (box2_br_xy - box2_tl_xy).prod(-1)
+    area1 = mx.prod((box1_br_xy - box1_tl_xy), axis=-1)
+    area2 = mx.prod((box2_br_xy - box2_tl_xy), axis=-1)
 
     assert (area1 >= 0).all() and (area2 >= 0).all()
-    tl = mx.max(box1_tl_xy, box2_tl_xy)
-    br = mx.min(box1_br_xy, box2_br_xy)
+    tl = mx.maximum(box1_tl_xy, box2_tl_xy)
+    br = mx.minimum(box1_br_xy, box2_br_xy)
 
-    inter = (br - tl).clamp(min=0).prod(-1)
+    inter = mx.prod(mx.clip((br - tl), a_min=0, a_max=None), axis=-1)
     union = area1 + area2 - inter
 
     return inter, union

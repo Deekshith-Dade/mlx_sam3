@@ -51,7 +51,12 @@ class Sam3Processor:
             input_points_mask=None,
         )
 
-
+    def print_sim(self, one, two):
+        self.prefix = "/Users/deekshith/Documents/Projects/vision-models/mlx_sam3/vit_block"
+        self.path = f"{self.prefix}/text_snapshot.pt"
+        similarity = (one * two).sum() / (mx.linalg.norm(one) * mx.linalg.norm(two))
+        print(f"Cosine Sim: {similarity.item():.6f}")
+    
     def set_image(self, image, state=None):
         if state is None:
             state = {}

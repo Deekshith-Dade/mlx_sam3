@@ -439,6 +439,7 @@ class TransformerDecoder(nn.Module):
                     if apply_dac
                     else mx.tile(reference_boxes, (1, bs, 1))
                 )
+                reference_boxes = mx.sigmoid(reference_boxes)
             intermediate_ref_boxes = [reference_boxes]
         else:
             reference_boxes = None

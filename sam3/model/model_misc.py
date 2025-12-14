@@ -28,21 +28,47 @@ class MultiheadAttentionWrapper(nn.MultiHeadAttention):
         key_padding_mask = kwargs['key_padding_mask']
         attn_mask = kwargs['attn_mask']
 
+        # TODO: check this implementation from codex5.1
+        # Convert key padding mask (bs, src_len) to additive mask
         padding_mask = None
         if key_padding_mask is not None:
             padding_mask = mx.where(key_padding_mask, -float('inf'), 0.0)
             padding_mask = padding_mask[:, None, None, :]
 
-        final_mask = padding_mask
+        # Normalize attn_mask to additive form compatible with mlx MultiHeadAttention
+        normalized_attn_mask = None
         if attn_mask is not None:
-            # TODO: check this
-            if attn_mask.ndim == 2:
-                attn_mask = attn_mask[None, None, :, :]
-                final_mask = final_mask + attn_mask
-        
-        
-        del kwargs['attn_mask']
-        del kwargs['key_padding_mask']
+            mask = attn_mask
+            # Bring bool masks to additive 0 / -inf form
+            if mask.dtype == mx.bool_:
+                mask = mx.where(mask, -float('inf'), 0.0)
+
+            if mask.ndim == 2:
+                # (tgt_len, src_len) -> (1, 1, tgt_len, src_len)
+                mask = mask[None, None, :, :]
+            elif mask.ndim == 3:
+                # Accept (bs, tgt_len, src_len) or (bs * num_heads, tgt_len, src_len)
+                q = args[0] if len(args) > 0 else kwargs.get("query") or kwargs.get("queries")
+                batch_size = q.shape[0] if q is not None else None
+                tgt_len, src_len = mask.shape[-2], mask.shape[-1]
+                if batch_size is not None:
+                    if mask.shape[0] == batch_size * self.num_heads:
+                        mask = mask.reshape(batch_size, self.num_heads, tgt_len, src_len)
+                    elif mask.shape[0] == batch_size:
+                        mask = mask[:, None, :, :]
+                # else: assume already (batch, heads, tgt, src) or compatible
+            normalized_attn_mask = mask
+
+        # Combine padding and attention masks
+        if padding_mask is not None and normalized_attn_mask is not None:
+            final_mask = padding_mask + normalized_attn_mask
+        elif padding_mask is not None:
+            final_mask = padding_mask
+        else:
+            final_mask = normalized_attn_mask
+
+        kwargs.pop('attn_mask', None)
+        kwargs.pop('key_padding_mask', None)
         kwargs['mask'] = final_mask
 
         return super().__call__(*args, **kwargs)
