@@ -51,12 +51,7 @@ class Sam3Processor:
             input_points_mask=None,
         )
 
-    def print_sim(self, one, two):
-        self.prefix = "/Users/deekshith/Documents/Projects/vision-models/mlx_sam3/vit_block"
-        self.path = f"{self.prefix}/text_snapshot.pt"
-        similarity = (one * two).sum() / (mx.linalg.norm(one) * mx.linalg.norm(two))
-        print(f"Cosine Sim: {similarity.item():.6f}")
-    
+   
     def set_image(self, image, state=None):
         if state is None:
             state = {}
@@ -106,10 +101,47 @@ class Sam3Processor:
         return self._call_grounding(state)
 
     def add_geometric_prompt(self, box: List, label: bool, state: Dict):
-        pass
+        """Adds a box prompt and run the inference.
+        The image needs to be set, but not necessarily the text prompt.
+        The box is assumed to be in [center_x, center_y, width, height] format and normalized in [0, 1] range.
+        The label is True for a positive box, False for a negative box.
+        """
+        if "backbone_out" not in state:
+            raise ValueError("You must call set_image before set_text_prompt")
+
+        if "language_features" not in state["backbone_out"]:
+            # Looks like we don't have a text prompt yet. This is allowed, but we need to set the text prompt to "visual" for the model to rely only on the geometric prompt
+            dummy_text_outputs = self.model.backbone.call_text(
+                ["visual"]
+            )
+            state["backbone_out"].update(dummy_text_outputs)
+
+        if "geometric_prompt" not in state:
+            state["geometric_prompt"] = self.model._get_dummy_prompt()
+
+        # adding a batch and sequence dimension
+        boxes = mx.array(box, dtype=mx.float32).reshape(1, 1, 4)
+        labels = mx.array([label], dtype=mx.bool_).reshape(1, 1)
+        state["geometric_prompt"].append_boxes(boxes, labels)
+
+        return self._call_grounding(state)
 
     def reset_all_prompts(self, state: Dict):
-        pass
+        """Removes all the prompts and results"""
+        if "backbone_out" in state:
+            backbone_keys_to_del = [
+                "language_features",
+                "language_mask",
+                "language_embeds",
+            ]
+            for key in backbone_keys_to_del:
+                if key in state["backbone_out"]:
+                    del state["backbone_out"][key]
+
+        keys_to_del = ["geometric_prompt", "boxes", "masks", "masks_logits", "scores"]
+        for key in keys_to_del:
+            if key in state:
+                del state[key]
 
     def set_confidence_threshold(self, threshold: float, state=None):
         pass

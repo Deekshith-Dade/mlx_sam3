@@ -10,7 +10,7 @@ class PositionEmbeddingSine(nn.Module):
         self,
         num_pos_feats,
         temperature: int = 10000,
-        normalize: bool = False,
+        normalize: bool = True,
         scale: Optional[float] = None,
         precompute_resolution: Optional[int] = None,
     ):
@@ -74,7 +74,6 @@ class PositionEmbeddingSine(nn.Module):
         return mx.stop_gradient(pos)
     
     def __call__(self, x: mx.array) -> mx.array:
-        cache_key = None
         cache_key = (x.shape[2], x.shape[-1])
         if cache_key in self.cache:
             return mx.repeat(self.cache[cache_key][None], repeats=x.shape[0], axis=0)
@@ -111,6 +110,6 @@ class PositionEmbeddingSine(nn.Module):
         pos = mx.concat((pos_y, pos_x), axis=3).transpose(0, 3, 1, 2)
         if cache_key is not None:
             self.cache[cache_key] = pos[0]
-        return pos
+        return mx.stop_gradient(pos)
 
             

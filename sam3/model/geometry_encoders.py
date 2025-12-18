@@ -8,6 +8,7 @@ from .grid_sample_mlx import grid_sample
 
 from .box_ops import box_cxcywh_to_xyxy
 from .model_misc import get_clones
+from .roi_align import roi_align
 
 def is_right_padded(mask):
     """Given a padding mask (following pytorch convention, 1s for padded values),
@@ -260,7 +261,7 @@ class Prompt:
 
     def _init_box(self, box_embeddings, box_labels, box_mask, box_seq_len, bs):
         if box_embeddings is None:
-            box_embeddings = mx.zeros((box_seq_len, bs), 4)
+            box_embeddings = mx.zeros((box_seq_len, bs, 4))
         if box_labels is None:
             box_labels = mx.ones((box_seq_len, bs), dtype=mx.int64)
         if box_mask is None:
@@ -295,6 +296,29 @@ class Prompt:
             mask_mask = mx.zeros((bs, mask_seq_len), dtype=mx.int64)
         return mask_embeddings, mask_labels, mask_mask
     
+    def append_boxes(self, boxes, labels, mask=None):
+        if self.box_embeddings is None:
+            self.box_embeddings = boxes
+            self.box_labels = labels
+            self.box_mask = mask
+            return
+        
+        bs = self.box_embeddings.shape[1]
+        assert boxes.shape[1] == labels.shape[1] == bs
+        assert list(boxes.shape[:2]) == list(labels.shape[:2])
+        if mask is None:
+            mask = mx.zeros(
+                (bs, boxes.shape[0]), dtype=mx.bool_
+            )
+        
+        self.box_labels, _ = concat_padded_sequences(
+            self.box_labels[..., None], self.box_mask, labels[..., None], mask
+        )
+        self.box_labels = self.box_labels.squeeze(-1)
+        self.box_embeddings, self.box_mask = concat_padded_sequences(
+            self.box_embeddings, self.box_mask, boxes, mask
+        )
+
     def fun(self):
         pass
 
@@ -437,6 +461,7 @@ class SequenceGeometryEncoder(nn.Module):
             sampled = sampled_nhwc.transpose(0, 3, 1, 2)
             assert list(sampled.shape) == [bs, self.d_model, n_points, 1]
             sampled = sampled.squeeze(-1).transpose(2, 0, 1)
+            proj = self.points_pool_project(sampled)
             if points_embed is None:
                 points_embed = proj
             else:
@@ -476,7 +501,47 @@ class SequenceGeometryEncoder(nn.Module):
             scale = mx.array([W, H, W, H], dtype=boxes_xyxy.dtype)
             scale = scale.reshape(1, 1, 4)
             boxes_xyxy = boxes_xyxy * scale
-            # TODO: understand roi_align and grid_sample from above
+            # In Torch, boxes_inp is built using unbind(1) which returns a list of tensors for each batch element.
+            # In MLX, we use a list comprehension. This correctly handles any batch size (including bs=0)
+            # and avoids indexing into empty dimensions.
+            boxes_inp = [boxes_xyxy[:, i, :].astype(mx.float32) for i in range(bs)]
+            sampled = roi_align(
+                img_feats, boxes_inp, self.roi_size, self.roi_size
+            )
+            assert list(sampled.shape) == [
+                bs * n_boxes,
+                self.d_model,
+                self.roi_size,
+                self.roi_size,
+            ]
+            proj = self.boxes_pool_project(sampled)
+            proj = proj.reshape(bs, n_boxes, self.d_model).transpose(1, 0, 2)
+            if boxes_embed is None:
+                boxes_embed = proj
+            else:
+                boxes_embed = boxes_embed + proj
+
+        if self.boxes_pos_enc_project is not None:
+            cx, cy, w, h = (
+                boxes[..., 0],
+                boxes[..., 1],
+                boxes[..., 2],
+                boxes[..., 3],
+            )
+            enc = self.pos_enc.encode_boxes(
+                cx.flatten(), cy.flatten(), w.flatten(), h.flatten()
+            )
+
+            enc = enc.reshape(n_boxes, bs, enc.shape[-1])
+
+            proj = self.boxes_pos_enc_project(enc)
+            if boxes_embed is None:
+                boxes_embed = proj
+            else:
+                boxes_embed = boxes_embed + proj
+        
+        type_embed = self.label_embed(boxes_labels.astype(mx.int64))
+        return type_embed + boxes_embed, boxes_mask
 
     def _encode_masks(
         self,
@@ -576,15 +641,15 @@ class SequenceGeometryEncoder(nn.Module):
         )
 
         if not self.encode_boxes_as_points:
-            # boxes_embeds, boxes_mask = self._encode_boxes(
-            #     boxes=boxes,
-            #     boxes_mask=boxes_mask,
-            #     boxes_labels=boxes_labels,
-            #     img_feats=img_feats,
-            # )
+            boxes_embeds, boxes_mask = self._encode_boxes(
+                boxes=boxes,
+                boxes_mask=boxes_mask,
+                boxes_labels=boxes_labels,
+                img_feats=img_feats,
+            )
             # TODO: not implemented encode boxes
-            boxes_embeds = mx.zeros((0, 1, 256))
-            boxes_mask = mx.zeros((1, 0)).astype(mx.bool_)
+            # boxes_embeds = mx.zeros((0, 1, 256))
+            # boxes_mask = mx.zeros((1, 0)).astype(mx.bool_)
 
             final_embeds, final_mask = concat_padded_sequences(
                 final_embeds, final_mask, boxes_embeds, boxes_mask
@@ -616,11 +681,11 @@ class SequenceGeometryEncoder(nn.Module):
         if self.encode is not None:
             for lay in self.encode:
                 final_embeds = lay(
-                    tgt=final_embeds,
+                    tgt=final_embeds.transpose(1, 0, 2),
                     memory=seq_first_img_feats.transpose(1, 0, 2),
                     tgt_key_padding_mask=final_mask,
                     pos=seq_first_img_pos_embeds.transpose(1, 0, 2),
-                )
+                ).transpose(1, 0, 2)
             final_embeds = self.encode_norm(final_embeds)
         # Finally, concat mask embeddings if any
         if masks is not None and self.mask_encoder is not None:

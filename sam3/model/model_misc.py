@@ -289,7 +289,7 @@ class LayerScale(nn.Module):
 
 
 def get_clones(module, N):
-    return [module() for i in range(N)]
+    return [module() for _ in range(N)]
 
 def get_activation_fn(activation):
     """Return an activation function given a string"""

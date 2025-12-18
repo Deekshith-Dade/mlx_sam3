@@ -65,7 +65,7 @@ class TransformerEncoderLayer(nn.Module):
         # self attention
         tgt2 = self.self_attn(
             q, k, value=tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask
-        )[0]
+        )
         tgt = tgt + self.dropout1(tgt2)
         tgt = self.norm1(tgt)
 
@@ -76,7 +76,7 @@ class TransformerEncoderLayer(nn.Module):
             value=memory,
             attn_mask=memory_mask,
             key_padding_mask=memory_key_padding_mask,
-        )[0]
+        )
         tgt = tgt + self.dropout2(tgt2)
         tgt = self.norm2(tgt)
 
@@ -108,7 +108,7 @@ class TransformerEncoderLayer(nn.Module):
         q = k = tgt2 + query_pos if self.pos_enc_at_attn else tgt2
         tgt2 = self.self_attn(
             q, k, values=tgt2, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask
-        )[0]
+        )
         tgt = tgt + self.dropout1(tgt2)
         if dac:
             # Recombine
@@ -121,7 +121,7 @@ class TransformerEncoderLayer(nn.Module):
             attn_mask=memory_mask,
             key_padding_mask=memory_key_padding_mask,
             # attn_bias=attn_bias,
-        )[0]
+        )
         tgt = tgt + self.dropout2(tgt2)
         tgt2 = self.norm3(tgt)
         tgt2 = self.linear2(self.dropout(self.activation(self.linear1(tgt2))))
