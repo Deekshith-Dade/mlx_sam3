@@ -1,4 +1,6 @@
+import time
 from functools import partial
+
 from typing import Dict, List
 import PIL
 from PIL import Image
@@ -64,9 +66,11 @@ class Sam3Processor:
             raise ValueError("Image must be a PIL image")
         
         image = v2.functional.to_image(image)
+        # breakpoint()
         # image = self.transform(image)[None]
         image = self.transform(image).unsqueeze(0)
         image = mx.array(image.numpy())
+        # breakpoint()
 
         state["original_height"] = height
         state["original_width"] = width
