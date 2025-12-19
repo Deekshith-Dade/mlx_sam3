@@ -15,13 +15,13 @@ interface Props {
 
 // Color palette for masks
 const COLORS = [
-  [59, 235, 161],  // Emerald
-  [96, 165, 250],  // Blue
-  [251, 191, 36],  // Amber
+  [59, 235, 161], // Emerald
+  [96, 165, 250], // Blue
+  [251, 191, 36], // Amber
   [248, 113, 113], // Red
   [167, 139, 250], // Violet
-  [52, 211, 153],  // Green
-  [251, 146, 60],  // Orange
+  [52, 211, 153], // Green
+  [251, 146, 60], // Orange
   [147, 197, 253], // Light Blue
 ];
 
@@ -37,23 +37,28 @@ export function SegmentationCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
-  
+
   const [isDrawing, setIsDrawing] = useState(false);
-  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [currentPoint, setCurrentPoint] = useState<{ x: number; y: number } | null>(null);
+  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const [currentPoint, setCurrentPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [displayScale, setDisplayScale] = useState(1);
 
   // Calculate display scale to fit image in container
   useEffect(() => {
     if (!containerRef.current || !imageWidth || !imageHeight) return;
-    
+
     const containerWidth = containerRef.current.clientWidth;
     const maxHeight = window.innerHeight * 0.7;
-    
+
     const scaleX = containerWidth / imageWidth;
     const scaleY = maxHeight / imageHeight;
     const scale = Math.min(scaleX, scaleY, 1);
-    
+
     setDisplayScale(scale);
   }, [imageWidth, imageHeight]);
 
@@ -82,8 +87,9 @@ export function SegmentationCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const displayWidth = imageWidth * displayScale;
-    const displayHeight = imageHeight * displayScale;
+    // Use integer dimensions for canvas
+    const displayWidth = Math.floor(imageWidth * displayScale);
+    const displayHeight = Math.floor(imageHeight * displayScale);
 
     canvas.width = displayWidth;
     canvas.height = displayHeight;
@@ -103,29 +109,60 @@ export function SegmentationCanvas({
         const color = COLORS[i % COLORS.length];
 
         // Draw mask overlay
-        if (mask && mask.length > 0) {
-          const maskData = mask[0] as number[][]; // First channel
+        if (mask && Array.isArray(mask) && mask.length > 0) {
+          // Handle both [1, H, W] and [H, W] formats
+          let maskData: number[][];
+          if (Array.isArray(mask[0]) && Array.isArray(mask[0][0])) {
+            // Shape is [1, H, W] - take first channel
+            maskData = mask[0] as number[][];
+          } else if (Array.isArray(mask[0])) {
+            // Shape is [H, W] - use directly
+            maskData = mask as unknown as number[][];
+          } else {
+            continue;
+          }
+
+          const maskH = maskData.length;
+          const maskW = maskData[0]?.length || 0;
+          if (maskH === 0 || maskW === 0) continue;
+
+          // Create overlay with semi-transparent mask color
           const imgData = ctx.getImageData(0, 0, displayWidth, displayHeight);
           const data = imgData.data;
 
-          for (let y = 0; y < maskData.length; y++) {
-            const row = maskData[y];
-            for (let x = 0; x < row.length; x++) {
-              if (row[x] > 0) {
-                // Scale mask coordinates to display size
-                const displayX = Math.floor(x * displayScale);
-                const displayY = Math.floor(y * displayScale);
-                
-                if (displayX < displayWidth && displayY < displayHeight) {
-                  const idx = (displayY * displayWidth + displayX) * 4;
-                  // Blend with existing pixel
-                  data[idx] = Math.min(255, data[idx] * 0.5 + color[0] * 0.5);
-                  data[idx + 1] = Math.min(255, data[idx + 1] * 0.5 + color[1] * 0.5);
-                  data[idx + 2] = Math.min(255, data[idx + 2] * 0.5 + color[2] * 0.5);
+          // Scale factors from mask coordinates to display coordinates
+          const scaleX = displayWidth / maskW;
+          const scaleY = displayHeight / maskH;
+
+          for (let my = 0; my < maskH; my++) {
+            const row = maskData[my];
+            if (!row) continue;
+            for (let mx = 0; mx < row.length; mx++) {
+              if (row[mx] > 0) {
+                // Map mask pixel to display pixel(s)
+                const dx = Math.floor(mx * scaleX);
+                const dy = Math.floor(my * scaleY);
+
+                if (
+                  dx >= 0 &&
+                  dx < displayWidth &&
+                  dy >= 0 &&
+                  dy < displayHeight
+                ) {
+                  const idx = (dy * displayWidth + dx) * 4;
+                  // Blend with existing pixel (50% opacity)
+                  data[idx] = Math.round(data[idx] * 0.5 + color[0] * 0.5);
+                  data[idx + 1] = Math.round(
+                    data[idx + 1] * 0.5 + color[1] * 0.5
+                  );
+                  data[idx + 2] = Math.round(
+                    data[idx + 2] * 0.5 + color[2] * 0.5
+                  );
                 }
               }
             }
           }
+
           ctx.putImageData(imgData, 0, 0);
         }
 
@@ -185,7 +222,16 @@ export function SegmentationCanvas({
       ctx.strokeRect(x, y, width, height);
       ctx.setLineDash([]);
     }
-  }, [imageWidth, imageHeight, displayScale, result, isDrawing, startPoint, currentPoint, boxMode]);
+  }, [
+    imageWidth,
+    imageHeight,
+    displayScale,
+    result,
+    isDrawing,
+    startPoint,
+    currentPoint,
+    boxMode,
+  ]);
 
   useEffect(() => {
     drawCanvas();
@@ -288,7 +334,9 @@ export function SegmentationCanvas({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        className={`rounded-lg shadow-xl ${isLoading ? "opacity-50 pointer-events-none" : ""}`}
+        className={`rounded-lg shadow-xl ${
+          isLoading ? "opacity-50 pointer-events-none" : ""
+        }`}
         style={{ cursor: isLoading ? "wait" : "crosshair" }}
       />
       {isLoading && (
@@ -302,4 +350,3 @@ export function SegmentationCanvas({
     </div>
   );
 }
-

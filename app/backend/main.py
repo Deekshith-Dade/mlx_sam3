@@ -113,8 +113,7 @@ def serialize_state(state: dict) -> dict:
             box_np = np.array(boxes[i])
             score_np = float(np.array(scores[i]))
             
-            # Encode mask as RLE or simplified format for efficiency
-            # For simplicity, we'll send as list of coordinates where mask is True
+            # Convert mask to binary (0/1) format
             mask_binary = (mask_np > 0.5).astype(np.uint8)
             masks_list.append(mask_binary.tolist())
             boxes_list.append(box_np.tolist())
