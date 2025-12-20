@@ -1,3 +1,4 @@
+import time
 from copy import deepcopy
 from typing import List, Optional, Tuple
 
@@ -36,14 +37,11 @@ class Scale4FN(nn.Module):
         )
 
     def __call__(self, x):
-        x = x.transpose(0, 2, 3, 1)
         x = self.dconv_2x2_0(x)
         x = self.gelu(x)
         x = self.dconv_2x2_1(x)
         x = self.conv_1x1(x)
-        x = self.conv_3x3(x)
-        x = x.transpose(0, 3, 1, 2)
-        return x
+        return self.conv_3x3(x)
 
 class Scale2FN(nn.Module):
     def __init__(self, in_channels: int, d_model: int, use_bias: bool = True):
@@ -70,13 +68,9 @@ class Scale2FN(nn.Module):
         )
 
     def __call__(self, x):
-        x = x.transpose(0, 2, 3, 1)
         x = self.dconv_2x2(x)
-        # x = self.gelu(x)
         x = self.conv_1x1(x)
-        x = self.conv_3x3(x)
-        x = x.transpose(0, 3, 1, 2)
-        return x
+        return self.conv_3x3(x)
 
 class Scale1FN(nn.Module):
     def __init__(self, in_channels: int, d_model: int, use_bias: bool = True):
@@ -96,11 +90,7 @@ class Scale1FN(nn.Module):
         )
 
     def __call__(self, x):
-        x = x.transpose(0, 2, 3, 1)
-        x = self.conv_1x1(x)
-        x = self.conv_3x3(x)
-        x = x.transpose(0, 3, 1, 2)
-        return x
+        return self.conv_3x3(self.conv_1x1(x))
 
 class Scale0_5FN(nn.Module):
     def __init__(self, in_channels: int, d_model: int, use_bias: bool = True):
@@ -124,12 +114,8 @@ class Scale0_5FN(nn.Module):
         )
 
     def __call__(self, x):
-        x = x.transpose(0, 2, 3, 1)
         x = self.maxpool_2x2(x)
-        x = self.conv_1x1(x)
-        x = self.conv_3x3(x)
-        x = x.transpose(0, 3, 1, 2)
-        return x
+        return self.conv_3x3(self.conv_1x1(x))
 
 class Sam3DualViTDetNeck(nn.Module):
     def __init__(
@@ -199,21 +185,23 @@ class Sam3DualViTDetNeck(nn.Module):
         Optional[List[mx.array]],
         Optional[List[mx.array]],
     ]:
+
         xs = self.trunk(x_list)
         sam3_out, sam3_pos = [], []
         sam2_out, sam2_pos = None, None       
         if self.sam2_convs is not None:
             sam2_out, sam2_pos = [], []
-        x = xs[-1]
+        x = xs[-1].transpose(0, 2, 3, 1)
         for i in range(len(self.convs)):
             sam3_x_out = self.convs[i](x)
-            sam3_pos_out = self.position_encoding(sam3_x_out).astype(sam3_x_out.dtype)
-            sam3_out.append(sam3_x_out)
-            sam3_pos.append(sam3_pos_out)
+            nchw_shape = (sam3_x_out.shape[0], sam3_x_out.shape[3], sam3_x_out.shape[1], sam3_x_out.shape[2])
+            sam3_out.append(sam3_x_out.transpose(0, 3, 1, 2))
+            sam3_pos.append(self.position_encoding(nchw_shape).astype(sam3_x_out.dtype))
 
             if self.sam2_convs is not None:
                 sam2_x_out = self.sam2_convs[i](x)
-                sam2_pos_out = self.position_encoding(sam2_x_out).astype(sam2_x_out.dtype)
-                sam2_out.append(sam2_x_out)
-                sam2_pos.append(sam2_pos_out)
+                nchw_shape = (sam2_x_out.shape[0], sam2_x_out.shape[3], sam2_x_out.shape[1], sam2_x_out.shape[2])
+                sam2_out.append(sam2_x_out.transpose(0, 3, 1, 2))
+                sam2_pos.append(self.position_encoding(nchw_shape).astype(sam2_x_out.dtype))
+
         return sam3_out, sam3_pos, sam2_out, sam2_pos

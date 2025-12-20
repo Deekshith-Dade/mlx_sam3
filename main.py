@@ -8,10 +8,8 @@ from sam3.visualization_utils import normalize_bbox
 
 def main():
     start = time.perf_counter()
-    checkpoint_path = "/Users/deekshith/Documents/Projects/vision-models/mlx_sam3/sam3-mod-weights/model.safetensors"
-    model = build_sam3_image_model(
-        checkpoint_path=checkpoint_path,
-    )
+    model = build_sam3_image_model()
+
     second = time.perf_counter()
     print(f"Model loaded in {second - start:.2f} seconds.")
     
@@ -25,12 +23,13 @@ def main():
     print(f"Image processed in {inter - second:.2f} seconds.")
 
     processor.reset_all_prompts(inference_state)
-    inference_state = processor.set_text_prompt(state=inference_state, prompt="face")
+    inference_state = processor.set_text_prompt(state=inference_state, prompt="shoe")
     output = inference_state
     # Get the masks, bounding boxes, and scores
     masks, boxes, scores = output["masks"], output["boxes"], output["scores"]
     third = time.perf_counter()
     print(f"Inference completed in {third - second:.2f} seconds.")
+    print(f"Total Objects Found: {len(scores)}")
 
     
     # box_input_xywh = mx.array([480.0, 290.0, 110.0, 360.0]).reshape(-1, 4)
@@ -45,7 +44,8 @@ def main():
     # )
     # output = inference_state
     # masks, boxes, scores = output["masks"], output["boxes"], output["scores"]
-    breakpoint()
+    print(scores)
+    print(boxes)
 
     
 

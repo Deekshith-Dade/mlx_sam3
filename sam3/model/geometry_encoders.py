@@ -46,7 +46,6 @@ def concat_padded_sequences(seq1, mask1, seq2, mask2, return_index: bool = False
     assert seq1_length == mask1.shape[1]
     assert seq2_length == mask2.shape[1]
 
-    # TODO: async assert in torch
     assert is_right_padded(mask1)
     assert is_right_padded(mask2)
 
@@ -647,9 +646,6 @@ class SequenceGeometryEncoder(nn.Module):
                 boxes_labels=boxes_labels,
                 img_feats=img_feats,
             )
-            # TODO: not implemented encode boxes
-            # boxes_embeds = mx.zeros((0, 1, 256))
-            # boxes_mask = mx.zeros((1, 0)).astype(mx.bool_)
 
             final_embeds, final_mask = concat_padded_sequences(
                 final_embeds, final_mask, boxes_embeds, boxes_mask

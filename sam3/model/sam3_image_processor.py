@@ -21,27 +21,20 @@ def transform(image_path_or_pil, resolution):
     else:
         img = image_path_or_pil.convert("RGB")
     
-    img = img.resize((resolution, resolution), resample=Image.Resampling.BILINEAR)
+    img = img.resize((resolution, resolution), resample=Image.Resampling.LANCZOS)
     img_np = np.array(img).astype(np.float32) / 255.0 # [H, W, C]
 
     img_np = (img_np - 0.5) / 0.5
 
-    return mx.array(img_np).transpose(2, 1, 0)
+    return mx.array(img_np).transpose(2, 0, 1)  # [H, W, C] -> [C, H, W]
 
 class Sam3Processor:
     def __init__(self, model, resolution=1008, confidence_threshold=0.5):
         self.model = model
         self.resolution = resolution
         self.confidence_threshold = confidence_threshold
-        # self.transform = partial(transform, resolution=self.resolution)
-        self.transform = v2.Compose(
-            [
-                v2.ToDtype(torch.uint8, scale=True),
-                v2.Resize(size=(resolution, resolution)),
-                v2.ToDtype(torch.float32, scale=True),
-                v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-            ]
-        )
+        self.transform = partial(transform, resolution=self.resolution)
+
 
         self.find_stage = FindStage(
             img_ids=mx.array([0], dtype=mx.int64),
@@ -65,16 +58,16 @@ class Sam3Processor:
         else:
             raise ValueError("Image must be a PIL image")
         
-        image = v2.functional.to_image(image)
-        # breakpoint()
-        # image = self.transform(image)[None]
-        image = self.transform(image).unsqueeze(0)
-        image = mx.array(image.numpy())
-        # breakpoint()
+        image = self.transform(image)[None]
 
         state["original_height"] = height
         state["original_width"] = width
+        import time
+        start = time.perf_counter()
         state["backbone_out"] = self.model.backbone.call_image(image)
+        mx.eval(state)
+        second = time.perf_counter()
+        print(f"Backbone pass took {second - start:.2f} Seconds")
         inst_interactivity_en = self.model.inst_interactive_predictor is not None
         if inst_interactivity_en and "sam2_backbone_out" in state["backbone_out"]:
             sam2_backbone_out = state["backbone_out"]["sam2_backbone_out"]

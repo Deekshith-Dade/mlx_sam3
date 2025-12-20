@@ -73,21 +73,30 @@ class PositionEmbeddingSine(nn.Module):
         pos = mx.concat((pos_y, pos_x, labels[:, :, None]), axis=2)
         return mx.stop_gradient(pos)
     
-    def __call__(self, x: mx.array) -> mx.array:
-        cache_key = (x.shape[2], x.shape[-1])
+    def __call__(self, x: mx.array | tuple) -> mx.array:
+        """
+        Args:
+            x: Either an mx.array (NCHW format) or a shape tuple (N, C, H, W)
+        Returns:
+            Position encoding in NCHW format
+        """
+        shape = x if isinstance(x, tuple) else x.shape
+        batch, _, height, width = shape
+        
+        cache_key = (height, width)
         if cache_key in self.cache:
-            return mx.repeat(self.cache[cache_key][None], repeats=x.shape[0], axis=0)
+            return mx.repeat(self.cache[cache_key][None], repeats=batch, axis=0)
         
         y_embed = (
-            mx.arange(1, x.shape[-2] + 1, dtype=mx.float32)
+            mx.arange(1, height + 1, dtype=mx.float32)
             .reshape(1, -1, 1)
         )
-        y_embed = mx.broadcast_to(y_embed, (x.shape[0], x.shape[-2], x.shape[-1]))
+        y_embed = mx.broadcast_to(y_embed, (batch, height, width))
         x_embed = (
-            mx.arange(1, x.shape[-1] + 1, dtype=mx.float32)
+            mx.arange(1, width + 1, dtype=mx.float32)
             .reshape(1, 1, -1)
         )
-        x_embed = mx.broadcast_to(x_embed, (x.shape[0], x.shape[-2], x.shape[-1]))
+        x_embed = mx.broadcast_to(x_embed, (batch, height, width))
 
         if self.normalize:
             eps = 1e-6

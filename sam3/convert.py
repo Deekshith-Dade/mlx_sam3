@@ -36,10 +36,7 @@ def download(hf_repo):
             allow_patterns=["*.pt", "*.json"],
         )
     )
-# lf.query_proj = Linear(query_input_dims, dims, bias=bias)
-        # self.key_proj = Linear(key_input_dims, dims, bias=bias)
-        # self.value_proj = Linear(value_input_dims, value_dims, bias=bias)
-        # self.out_proj
+
 def update_attn_keys(key, mlx_weights):
     value = mlx_weights[key]
     del mlx_weights[key]
@@ -66,7 +63,6 @@ def update_attn_keys(key, mlx_weights):
         }
         mlx_weights.update(new_dict)
         
-
 def convert(model_path):
     weight_file = str(model_path / "sam3.pt")
     weights = torch.load(weight_file, map_location="cpu", weights_only=True)
@@ -98,20 +94,13 @@ def convert(model_path):
                     "backbone.vision_backbone.convs.3.conv_3x3.weight",
                 }:
                     v = v.transpose(0, 2, 3, 1)
-                
                 mlx_weights[k] = v
-
-                if k.endswith("in_proj_weight") or k.endswith("in_proj_bias"):
-                    update_attn_keys(k, mlx_weights)
 
             # transformer fusion encoder, detr decoder
             elif k.startswith("transformer."):
                 v = mx.array(v.numpy())
-
                 mlx_weights[k] = v
-                if k.endswith("in_proj_weight") or k.endswith("in_proj_bias"):
-                    update_attn_keys(k, mlx_weights)
-            
+
             # dot product scoring mlp layer
             elif k.startswith("dot_prod_scoring."):
                 v = mx.array(v.numpy())
@@ -129,25 +118,40 @@ def convert(model_path):
 
                 }:
                     v = v.transpose(0, 2, 3, 1)
-
                 mlx_weights[k] = v
-                if k.endswith("in_proj_weight") or k.endswith("in_proj_bias"):
-                    update_attn_keys(k, mlx_weights)
             
             # geometry encoder
             elif k.startswith("geometry_encoder."):
                 v = mx.array(v.numpy())
 
                 mlx_weights[k] = v
-                if k.endswith("in_proj_weight") or k.endswith("in_proj_bias"):
-                    update_attn_keys(k, mlx_weights)
+
+            if k.endswith("in_proj_weight") or k.endswith("in_proj_bias"):
+                update_attn_keys(k, mlx_weights)
 
      
     return mlx_weights 
 
+def download_and_convert(hf_repo: str, mlx_path: Union[str, Path], force: bool = False) -> Path:
+    mlx_path = Path(mlx_path)
+    weights_file = mlx_path / "model.safetensors"
+    index_file = mlx_path / "model.safetensors.index.json"
+    
+    # Skip if already converted (unless force=True)
+    if weights_file.exists() and index_file.exists() and not force:
+        # print(f"MLX weights already exist at {mlx_path}, skipping conversion.")
+        return mlx_path
+    
+    print(f"Downloading and converting weights from {hf_repo}...")
+    model_path = download(hf_repo)
 
-def main():
-    pass
+    mlx_path.mkdir(parents=True, exist_ok=True)
+    
+    mlx_weights = convert(model_path)
+    save_weights(mlx_path, mlx_weights)
+
+    return mlx_path
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Download and Convert Meta SAM-3 weights to MLX")
@@ -172,5 +176,3 @@ if __name__ == "__main__":
     
     mlx_weights = convert(model_path)
     save_weights(mlx_path, mlx_weights)
-    # COPY necessary config files
-    # shutil.copy(model_path / "config.json", mlx_path / "config.json")

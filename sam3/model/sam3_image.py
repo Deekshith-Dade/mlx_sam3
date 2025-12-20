@@ -122,7 +122,6 @@ class Sam3Image(nn.Module):
         
         # Image features not available in backbone out, so we compute on the fly
         # This case likely occurs for video. In that case, we want to forward only the current frame
-        # TODO: work on this
     
     def _encode_prompt(
         self,
@@ -186,7 +185,6 @@ class Sam3Image(nn.Module):
 
         # Run the encoder
         prompt_pos_embed = mx.zeros_like(prompt)
-        # TODO: check the stmnt for mlx: make a copy of the image feature lists since the encoder may modify these lists in-place
         memory = self.transformer.encoder(
             src=img_feats,
             src_key_padding_mask=None,

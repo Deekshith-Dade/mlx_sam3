@@ -149,7 +149,6 @@ def get_abs_pos(
 
             scale_h = h / current_h
             scale_w = w / current_w
-            # TODO: Using linear (bilinear) interpolation, CUBIC interpolation in torch SAM3
             upsample_fn = nn.Upsample(
                 scale_factor=(scale_h, scale_w), 
                 mode='cubic', 
@@ -251,7 +250,6 @@ class Attention(nn.Module):
         self.rel_pos_w = mx.zeros((2 * self.input_size[1] - 1, self.head_dim))
 
         if not rel_pos_zero_init:
-            # TODO: In pytorch initialization is done with nn.init.trunc_normal_
             self.rel_pos_h = mx.random.truncated_normal(lower=-2, uppper=2, shape=self.rel_pos_h.shape) * 0.02
             self.rel_pos_w = mx.random.truncated_normal(lower=-2, uppper=2, shape=self.rel_pos_w.shape) * 0.02
         
@@ -502,7 +500,6 @@ class ViT(nn.Module):
                 pretrain_img_size // patch_size
             )
             num_positions = (num_patches + 1) if pretrain_use_cls_token else num_patches
-            # TODO: Check Clearly about nn.Parameter and how mlx handles trainable and non-trainable parameters
             self.pos_embed = mx.zeros((1, num_positions, embed_dim))
         else:
             self.pos_embed = None

@@ -3,6 +3,7 @@ import os
 import mlx.core as mx
 import mlx.nn as nn
 
+from sam3.convert import download_and_convert
 from sam3.model.sam3_image import Sam3Image
 from sam3.model.text_encoder_ve import VETextEncoder
 from sam3.model.tokenizer_ve import SimpleTokenizer
@@ -303,10 +304,9 @@ def load_checkpoint(model, checkpoint_path):
 
 def build_sam3_image_model(
     bpe_path=None,
-    # device=None,
-    # eval_mode=True,
     checkpoint_path=None,
-    # load_from_HF=True,
+    load_from_HF=True,
+    force_download=False,
     enable_segmentation=True,
     enable_inst_interactivity=False,
     compile=False
@@ -320,7 +320,6 @@ def build_sam3_image_model(
 
     # TODO: look about model compilation comparing how it's done in pytorch
     # vs how it's done in mlx
-    # TODO: look about enable_inst_interactivity
     vision_encoder = _create_vision_backbone(
         compile_mode=compile, enable_inst_interactivity=enable_inst_interactivity
     )
@@ -355,7 +354,16 @@ def build_sam3_image_model(
         dot_prod_scoring=dot_product_scoring
     )
 
-    load_checkpoint(model, checkpoint_path)
+    if load_from_HF and checkpoint_path is None:
+        checkpoint_path = download_and_convert(
+            hf_repo="facebook/sam3",
+            mlx_path="sam3-mod-weights",
+            force=force_download
+        )
+    
+    if checkpoint_path is not None:
+        load_checkpoint(model, f"{checkpoint_path}/model.safetensors")
+
     model.eval()
 
     return model
