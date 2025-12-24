@@ -3,7 +3,7 @@ import os
 import mlx.core as mx
 import mlx.nn as nn
 
-from sam3.convert import download_and_convert
+from sam3.convert import load_from_hub, download_and_convert, MLX_COMMUNITY_REPO
 from sam3.model.sam3_image import Sam3Image
 from sam3.model.text_encoder_ve import VETextEncoder
 from sam3.model.tokenizer_ve import SimpleTokenizer
@@ -162,20 +162,17 @@ def _create_dot_product_scoring():
     return DotProductScoring(d_model=256, d_proj=256, prompt_mlp=prompt_mlp)
 
 def _create_segmentation_head():
-    # pixel_decoder
     pixel_decoder = PixelDecoder(
         num_upsampling_stages=3,
         interpolation_mode="nearest",
         hidden_dim=256,
     )
 
-    # cross_attend_prompt
     cross_attend_prompt = MultiheadAttention(
         num_heads=8,
         dims=256,
     )
 
-    # segmentation_head
     segmentation_head = UniversalSegmentationHead(
         hidden_dim=256,
         upsampling_stages=3,
@@ -188,10 +185,7 @@ def _create_segmentation_head():
     return segmentation_head
 
 def _create_geometry_encoder():
-    """Create geometry encoder with all its components."""
-    # Create position encoding for geometry encoder
     geo_pos_enc = _create_position_encoding()
-   # Create geometry encoder layer
     geo_layer = lambda: TransformerEncoderLayer(
         activation="relu",
         d_model=256,
@@ -211,7 +205,6 @@ def _create_geometry_encoder():
         ),
     )
 
-    # Create geometry encoder
     input_geometry_encoder = SequenceGeometryEncoder(
         pos_enc=geo_pos_enc,
         encode_boxes_as_points=False,
@@ -264,8 +257,6 @@ def _create_vision_backbone(
 ) -> Sam3DualViTDetNeck:
 
     position_encoding = _create_position_encoding(precompute_resolution=1008)
-
-    # TODO: vit_backbone, look about compile_mode
     vit_backbone = _create_vit_backbone(compile_mode=compile_mode)
 
     vit_neck: Sam3DualViTDetNeck = _create_vit_neck(
@@ -276,7 +267,6 @@ def _create_vision_backbone(
     return vit_neck
 
 def _create_sam3_transformer(has_presence_token: bool = True):
-    # encoder
     encoder: TransformerEncoderFusion = _create_transformer_encoder()
     decoder: TransformerDecoder = _create_transformer_decoder()
 
@@ -305,21 +295,18 @@ def load_checkpoint(model, checkpoint_path):
 def build_sam3_image_model(
     bpe_path=None,
     checkpoint_path=None,
-    load_from_HF=True,
-    force_download=False,
+    hf_repo=MLX_COMMUNITY_REPO,
+    local_weights_dir=None,
+    convert_from_pytorch=False,
     enable_segmentation=True,
     enable_inst_interactivity=False,
     compile=False
 ):
-    # create models here
-
     if bpe_path is None:
         bpe_path = os.path.join(
             os.path.dirname(__file__), "..", "assets", "bpe_simple_vocab_16e6.txt.gz"
         )
 
-    # TODO: look about model compilation comparing how it's done in pytorch
-    # vs how it's done in mlx
     vision_encoder = _create_vision_backbone(
         compile_mode=compile, enable_inst_interactivity=enable_inst_interactivity
     )
@@ -332,19 +319,13 @@ def build_sam3_image_model(
 
     dot_product_scoring = _create_dot_product_scoring()
 
-    # segmentation_head
     segmentation_head = (
         _create_segmentation_head()
         if enable_segmentation
         else None
     )
 
-    # geometry_encoder
     input_geometry_encoder = _create_geometry_encoder()
-
-    # enable interactivity ? tracker, sam3interactiveimagepredictor
-    inst_predictor = None
-
 
     model = _create_sam3_model(
         backbone,
@@ -354,15 +335,19 @@ def build_sam3_image_model(
         dot_prod_scoring=dot_product_scoring
     )
 
-    if load_from_HF and checkpoint_path is None:
-        checkpoint_path = download_and_convert(
-            hf_repo="facebook/sam3",
-            mlx_path="sam3-mod-weights",
-            force=force_download
-        )
+    if checkpoint_path is None:
+        if convert_from_pytorch:
+            checkpoint_path = download_and_convert(
+                hf_repo="facebook/sam3",
+                mlx_path=local_weights_dir or "sam3-mod-weights",
+            )
+        else:
+            checkpoint_path = load_from_hub(
+                hf_repo=hf_repo,
+                local_dir=local_weights_dir,
+            )
     
-    if checkpoint_path is not None:
-        load_checkpoint(model, f"{checkpoint_path}")
+    load_checkpoint(model, f"{checkpoint_path}")
 
     model.eval()
 

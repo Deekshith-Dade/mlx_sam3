@@ -3,10 +3,36 @@ import argparse
 import json
 from pathlib import Path
 import shutil
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 
 import mlx.core as mx
 from huggingface_hub import snapshot_download
+
+
+MLX_COMMUNITY_REPO = "mlx-community/sam3-image"
+PYTORCH_REPO = "facebook/sam3"
+
+
+def load_from_hub(
+    hf_repo: str = MLX_COMMUNITY_REPO,
+    local_dir: Optional[str] = None,
+) -> Path:
+    download_kwargs = {
+        "repo_id": hf_repo,
+        "allow_patterns": ["*.safetensors", "*.json"],
+    }
+    
+    if local_dir:
+        download_kwargs["local_dir"] = local_dir
+    
+    model_path = Path(snapshot_download(**download_kwargs))
+    weights_file = model_path / "model.safetensors"
+    
+    if not weights_file.exists():
+        raise FileNotFoundError(f"model.safetensors not found in {hf_repo}.")
+    
+    return weights_file
+
 
 def save_weights(save_path: Union[str, Path], weights: Dict[str, mx.array]) -> None:
     if isinstance(save_path, str):
@@ -132,14 +158,16 @@ def convert(model_path):
      
     return mlx_weights 
 
-def download_and_convert(hf_repo: str, mlx_path: Union[str, Path], force: bool = False) -> Path:
+def download_and_convert(
+    hf_repo: str = PYTORCH_REPO,
+    mlx_path: Union[str, Path] = "sam3-mod-weights",
+    force: bool = False
+) -> Path:
     mlx_path = Path(mlx_path)
     weights_file = mlx_path / "model.safetensors"
     index_file = mlx_path / "model.safetensors.index.json"
     
-    # Skip if already converted (unless force=True)
     if weights_file.exists() and index_file.exists() and not force:
-        # print(f"MLX weights already exist at {mlx_path}, skipping conversion.")
         return weights_file
     
     print(f"Downloading and converting weights from {hf_repo}...")
@@ -154,25 +182,44 @@ def download_and_convert(hf_repo: str, mlx_path: Union[str, Path], force: bool =
     
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Download and Convert Meta SAM-3 weights to MLX")
+    parser = argparse.ArgumentParser(description="Download SAM-3 MLX weights or convert from PyTorch")
     parser.add_argument(
-        "--hf-path",
-        default="facebook/sam3",
+        "--mlx-repo",
+        default=MLX_COMMUNITY_REPO,
         type=str,
-        help="Path to the Hugging Face Model repo",
+        help=f"MLX Community repo to download pre-converted weights (default: {MLX_COMMUNITY_REPO})",
+    )
+    parser.add_argument(
+        "--pytorch-repo",
+        default=PYTORCH_REPO,
+        type=str,
+        help=f"PyTorch repo to download and convert weights (default: {PYTORCH_REPO})",
     )
     parser.add_argument(
         "--mlx-path",
         type=str,
-        default="sam3-mod-weights",
-        help="Path to save the MLX Model."
+        default=None,
+        help="Local path to save/cache the MLX Model weights."
+    )
+    parser.add_argument(
+        "--convert",
+        action="store_true",
+        help="Convert from PyTorch weights instead of loading pre-converted MLX weights"
     )
     args = parser.parse_args()
 
-    model_path = download(args.hf_path)
-
-    mlx_path = Path(args.mlx_path)
-    mlx_path.mkdir(parents=True, exist_ok=True)
-    
-    mlx_weights = convert(model_path)
-    save_weights(mlx_path, mlx_weights)
+    if args.convert:
+        mlx_path = args.mlx_path or "sam3-mod-weights"
+        print(f"Converting PyTorch weights from {args.pytorch_repo}...")
+        model_path = download(args.pytorch_repo)
+        
+        mlx_path = Path(mlx_path)
+        mlx_path.mkdir(parents=True, exist_ok=True)
+        
+        mlx_weights = convert(model_path)
+        save_weights(mlx_path, mlx_weights)
+        print(f"Converted weights saved to {mlx_path}")
+    else:
+        print(f"Downloading MLX weights from {args.mlx_repo}...")
+        weights_path = load_from_hub(args.mlx_repo, args.mlx_path)
+        print(f"MLX weights available at: {weights_path}")
