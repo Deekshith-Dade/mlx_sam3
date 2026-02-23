@@ -180,13 +180,15 @@ export function SegmentationCanvas({
           );
 
           // Draw score label
+          const labelText = mask.label ? `${mask.label} ${(score * 100).toFixed(0)}%` : `${(score * 100).toFixed(0)}%`;
           ctx.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-          ctx.fillRect(x0 * displayScale, y0 * displayScale - 24, 50, 20);
+          const textWidth = ctx.measureText(labelText).width;
+          ctx.fillRect(x0 * displayScale, y0 * displayScale - 24, textWidth + 12, 20);
           ctx.fillStyle = "#000";
           ctx.font = "bold 12px JetBrains Mono, monospace";
           ctx.fillText(
-            `${(score * 100).toFixed(0)}%`,
-            x0 * displayScale + 4,
+            labelText,
+            x0 * displayScale + 6,
             y0 * displayScale - 8
           );
         }

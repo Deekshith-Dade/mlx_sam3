@@ -97,6 +97,51 @@ class Sam3Processor:
             state["geometric_prompt"] = self.model._get_dummy_prompt()
         return self._call_grounding(state)
 
+    def set_text_prompts(self, prompts: List[str], state: Dict):
+        """Sets multiple text prompts and merges the results.
+        Returns a state with combined masks/boxes/scores/labels.
+        """
+        if "backbone_out" not in state:
+            raise ValueError("You must call set_image before set_text_prompts")
+            
+        all_masks = []
+        all_boxes = []
+        all_scores = []
+        all_labels = []
+
+        # We start with a base state (only image backbone out)
+        base_backbone_out = {k: v for k, v in state["backbone_out"].items() 
+                            if k not in ["language_features", "language_mask", "language_embeds"]}
+        
+        for prompt in prompts:
+            # Create a temporary state for this prompt
+            temp_state = state.copy()
+            temp_state["backbone_out"] = base_backbone_out.copy()
+            
+            # Run text prompt
+            self.set_text_prompt(prompt, temp_state)
+            
+            if "masks" in temp_state and len(temp_state["scores"]) > 0:
+                all_masks.append(temp_state["masks"])
+                all_boxes.append(temp_state["boxes"])
+                all_scores.append(temp_state["scores"])
+                # Add label for each detected item
+                n = len(temp_state["scores"])
+                all_labels.extend([prompt] * n)
+
+        if all_masks:
+            state["masks"] = mx.concatenate(all_masks, axis=0)
+            state["boxes"] = mx.concatenate(all_boxes, axis=0)
+            state["scores"] = mx.concatenate(all_scores, axis=0)
+            state["labels"] = all_labels
+        else:
+            state["masks"] = mx.array([], dtype=mx.bool_).reshape(0, state["original_height"], state["original_width"])
+            state["boxes"] = mx.array([], dtype=mx.float32).reshape(0, 4)
+            state["scores"] = mx.array([], dtype=mx.float32)
+            state["labels"] = []
+
+        return state
+
     def add_geometric_prompt(self, box: List, label: bool, state: Dict):
         """Adds a box prompt and run the inference.
         The image needs to be set, but not necessarily the text prompt.
