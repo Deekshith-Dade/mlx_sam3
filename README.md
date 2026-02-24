@@ -81,8 +81,8 @@ If you have [`uv`](https://docs.astral.sh/uv/) installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Deekshith-Dade/mlx-sam3.git
-cd mlx-sam3
+git clone https://github.com/Deekshith-Dade/mlx_sam3.git
+cd mlx_sam3
 
 # Install project dependencies
 uv sync
@@ -111,8 +111,8 @@ Press `Ctrl+C` to stop all servers.
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/mlx-sam3.git
-cd mlx-sam3
+git clone https://github.com/your-username/mlx_sam3.git
+cd mlx_sam3
 
 # Create and activate virtual environment
 python3 -m venv .venv
