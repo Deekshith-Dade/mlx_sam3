@@ -272,8 +272,40 @@ def _create_sam3_transformer(has_presence_token: bool = True):
 
     return TransformerWrapper(encoder=encoder, decoder=decoder, d_model=256)
 
+def _sanitize_conv_layout(model, weights):
+    """Korrigiert Conv-Gewichte, die in den veröffentlichten mlx-community/sam3-image-Gewichten
+    noch im PyTorch-Layout (channels-first) liegen. `convert.py` transponiert per fest verdrahteter
+    Key-Liste NUR die `convs.*` des SAM-3-Necks, NICHT deren `sam2_convs.*`-Zwillinge (zweiter Neck,
+    nur bei enable_inst_interactivity=True gebaut) und nicht `geometry_encoder.boxes_pool_project`.
+    Folge: bei aktivem Interaktiv-Pfad crasht `set_image` in necks.py `mx.conv_transpose2d`
+    (Channel-Mismatch). MLX-Convs sind channels-last → hier shape-getrieben + idempotent permutieren:
+      • nur anfassen, wenn die geladene Shape von der Modell-Soll-Shape abweicht (4D),
+      • ConvTranspose (`dconv`): PyTorch (Cin,Cout,kH,kW) -> MLX (Cout,kH,kW,Cin) = transpose(1,2,3,0),
+      • normale Conv (`conv_*`/`*_project`/`patch_embed.proj`): (Cout,Cin,kH,kW) -> (Cout,kH,kW,Cin)
+        = transpose(0,2,3,1)  (Key-Semantik nötig: bei quadratischen Convs ist die Shape mehrdeutig).
+    Bereits korrekt konvertierte Gewichte (Shape == Soll) bleiben unberührt. Siehe SAM3_FIX_NOTES.md."""
+    from mlx.utils import tree_flatten
+    expected = {k: tuple(v.shape) for k, v in tree_flatten(model.parameters())}
+    fixed = []
+    for k in list(weights.keys()):
+        exp = expected.get(k)
+        v = weights[k]
+        if exp is None or v.ndim != 4 or tuple(v.shape) == exp:
+            continue
+        perm = (1, 2, 3, 0) if "dconv" in k else (0, 2, 3, 1)
+        cand = mx.transpose(v, perm)
+        if tuple(cand.shape) == exp:
+            weights[k] = cand
+            fixed.append(k)
+    if fixed:
+        print(f"[sam3] Conv-Layout saniert: {len(fixed)} Gewichte PyTorch->MLX permutiert "
+              f"(sam2_convs/geometry — s. SAM3_FIX_NOTES.md)")
+    return weights
+
+
 def load_checkpoint(model, checkpoint_path):
     weights = mx.load(checkpoint_path)
+    weights = _sanitize_conv_layout(model, weights)
     try:
         model.load_weights(weights, strict=False)
         mx.eval(model.parameters())
