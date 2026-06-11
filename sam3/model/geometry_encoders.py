@@ -512,8 +512,6 @@ class SequenceGeometryEncoder(nn.Module):
                 self.roi_size,
                 self.roi_size,
             ]
-            # roi_align liefert NCHW; MLX-Conv2d erwartet channels-last (NHWC). Vor der Conv
-            # permutieren -> Output (B,1,1,d_model), d_model bleibt letzte Achse, Reshape passt.
             sampled = mx.transpose(sampled, (0, 2, 3, 1))
             proj = self.boxes_pool_project(sampled)
             proj = proj.reshape(bs, n_boxes, self.d_model).transpose(1, 0, 2)
