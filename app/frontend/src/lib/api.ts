@@ -11,6 +11,7 @@ export interface UploadResponse {
 export interface RLEMask {
   counts: number[];  // Run-length encoded counts
   size: [number, number];  // [height, width]
+  label?: string;   // Label associated with the mask
 }
 
 export interface SegmentationResult {
@@ -65,6 +66,18 @@ export async function segmentWithText(
   sessionId: string,
   prompt: string
 ): Promise<SegmentResponse> {
+  const prompts = prompt.split(",").map((p) => p.trim()).filter(Boolean);
+  
+  if (prompts.length > 1) {
+    return apiFetch<SegmentResponse>(() =>
+      fetch(`${API_BASE}/segment/text_multi`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, prompts }),
+      })
+    );
+  }
+
   return apiFetch<SegmentResponse>(() =>
     fetch(`${API_BASE}/segment/text`, {
       method: "POST",

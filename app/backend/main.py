@@ -74,6 +74,11 @@ class TextPromptRequest(BaseModel):
     prompt: str
 
 
+class TextPromptsRequest(BaseModel):
+    session_id: str
+    prompts: list[str]
+
+
 class BoxPromptRequest(BaseModel):
     session_id: str
     box: list[float]  # [center_x, center_y, width, height] normalized
@@ -132,6 +137,7 @@ def serialize_state(state: dict) -> dict:
         masks = state["masks"]
         boxes = state["boxes"]
         scores = state["scores"]
+        labels = state.get("labels", [])
         
         masks_list = []
         boxes_list = []
@@ -149,6 +155,11 @@ def serialize_state(state: dict) -> dict:
             
             # Encode as RLE
             rle = mask_to_rle(mask_binary)
+            
+            # Attach label if available
+            if i < len(labels):
+                rle["label"] = labels[i]
+                
             masks_list.append(rle)
             boxes_list.append(box_np.tolist())
             scores_list.append(score_np)
@@ -226,21 +237,45 @@ async def segment_with_text(request: TextPromptRequest):
         state = processor.set_text_prompt(request.prompt, session["state"])
         processing_time_ms = (time.perf_counter() - start_time) * 1000
         session["state"] = state
-        start = time.perf_counter()
-        results = serialize_state(state)
-        end = time.perf_counter()
-        print(f"Serialization took {end - start:.4f} seconds")
         
         return {
             "session_id": request.session_id,
             "prompt": request.prompt,
-            "results": results,
+            "results": serialize_state(state),
             "processing_time_ms": round(processing_time_ms, 2),
             "peak_memory_mb": round(mx.get_peak_memory() / (1024 * 1024), 2)
         }
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error during segmentation: {str(e)}")
+
+
+@app.post("/segment/text_multi")
+async def segment_with_multi_text(request: TextPromptsRequest):
+    """Segment image using multiple text prompts."""
+    if processor is None:
+        raise HTTPException(status_code=503, detail="Model not loaded yet")
+    
+    session = sessions.get(request.session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    try:
+        start_time = time.perf_counter()
+        state = processor.set_text_prompts(request.prompts, session["state"])
+        processing_time_ms = (time.perf_counter() - start_time) * 1000
+        session["state"] = state
+        
+        return {
+            "session_id": request.session_id,
+            "prompts": request.prompts,
+            "results": serialize_state(state),
+            "processing_time_ms": round(processing_time_ms, 2),
+            "peak_memory_mb": round(mx.get_peak_memory() / (1024 * 1024), 2)
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error during multi-text segmentation: {str(e)}")
 
 
 @app.post("/segment/box")
