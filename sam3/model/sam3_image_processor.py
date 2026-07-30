@@ -135,7 +135,7 @@ class Sam3Processor:
                 if key in state["backbone_out"]:
                     del state["backbone_out"][key]
 
-        keys_to_del = ["geometric_prompt", "boxes", "masks", "masks_logits", "scores"]
+        keys_to_del = ["geometric_prompt", "boxes", "masks", "mask_logits", "semantic_seg", "scores"]
         for key in keys_to_del:
             if key in state:
                 del state[key]
