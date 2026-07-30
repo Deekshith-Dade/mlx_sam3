@@ -512,6 +512,7 @@ class SequenceGeometryEncoder(nn.Module):
                 self.roi_size,
                 self.roi_size,
             ]
+            sampled = mx.transpose(sampled, (0, 2, 3, 1))
             proj = self.boxes_pool_project(sampled)
             proj = proj.reshape(bs, n_boxes, self.d_model).transpose(1, 0, 2)
             if boxes_embed is None:

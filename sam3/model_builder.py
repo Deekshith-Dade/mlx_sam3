@@ -272,8 +272,24 @@ def _create_sam3_transformer(has_presence_token: bool = True):
 
     return TransformerWrapper(encoder=encoder, decoder=decoder, d_model=256)
 
+def _sanitize_conv_layout(model, weights):
+    from mlx.utils import tree_flatten
+    expected = {k: tuple(v.shape) for k, v in tree_flatten(model.parameters())}
+    for k in list(weights.keys()):
+        exp = expected.get(k)
+        v = weights[k]
+        if exp is None or v.ndim != 4 or tuple(v.shape) == exp:
+            continue
+        perm = (1, 2, 3, 0) if "dconv" in k else (0, 2, 3, 1)
+        cand = mx.transpose(v, perm)
+        if tuple(cand.shape) == exp:
+            weights[k] = cand
+    return weights
+
+
 def load_checkpoint(model, checkpoint_path):
     weights = mx.load(checkpoint_path)
+    weights = _sanitize_conv_layout(model, weights)
     try:
         model.load_weights(weights, strict=False)
         mx.eval(model.parameters())
