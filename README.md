@@ -6,7 +6,7 @@
 
 [![MLX](https://img.shields.io/badge/MLX-Apple%20Silicon-black?logo=apple)](https://github.com/ml-explore/mlx)
 [![Python 3.13+](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)](https://python.org)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-SAM%20License-blue.svg)](LICENSE)
 [![HuggingFace](https://img.shields.io/badge/🤗-MLX%20Community-yellow)](https://huggingface.co/mlx-community/sam3-image)
 
 *A high-performance MLX port of Meta's SAM3 for interactive image segmentation on Mac*
@@ -201,7 +201,7 @@ state = processor.set_text_prompt("car", state)
 ## 🏗️ Project Structure
 
 ```
-mlx-sam3/
+mlx_sam3/
 ├── sam3/                    # Core MLX SAM3 implementation
 │   ├── model/               # Model components
 │   │   ├── sam3_image.py    # Main model architecture
@@ -291,7 +291,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
 
-This project is licensed under the Apache 2.0 License — see the [LICENSE](LICENSE) file for details.
+This project is a derivative work of Meta's [SAM 3](https://github.com/facebookresearch/sam3) (both the ported code and the converted weights) and is therefore distributed under Meta's SAM License, as its terms require — see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -307,7 +307,7 @@ This project is licensed under the Apache 2.0 License — see the [LICENSE](LICE
 
 **Built with ❤️ for Apple Silicon**
 
-[Report Bug](https://github.com/your-username/mlx-sam3/issues) · [Request Feature](https://github.com/your-username/mlx-sam3/issues)
+[Report Bug](https://github.com/Deekshith-Dade/mlx_sam3/issues) · [Request Feature](https://github.com/Deekshith-Dade/mlx_sam3/issues)
 
 </div>
 
