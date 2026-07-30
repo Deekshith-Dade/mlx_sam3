@@ -2,6 +2,7 @@ import os
 
 import mlx.core as mx
 import mlx.nn as nn
+from mlx.utils import tree_flatten
 
 from sam3.convert import load_from_hub, download_and_convert, MLX_COMMUNITY_REPO
 from sam3.model.sam3_image import Sam3Image
@@ -272,15 +273,31 @@ def _create_sam3_transformer(has_presence_token: bool = True):
 
     return TransformerWrapper(encoder=encoder, decoder=decoder, d_model=256)
 
+CONV_PERM = (0, 2, 3, 1)
+CONV_TRANSPOSE_PERM = (1, 2, 3, 0)
+
+
+def conv_weight_perms(model):
+    perms = {}
+    for name, module in model.named_modules():
+        if isinstance(module, nn.ConvTranspose2d):
+            perms[f"{name}.weight"] = CONV_TRANSPOSE_PERM
+        elif isinstance(module, nn.Conv2d):
+            perms[f"{name}.weight"] = CONV_PERM
+    return perms
+
+
+def parameter_shapes(model):
+    return {k: tuple(v.shape) for k, v in tree_flatten(model.parameters())}
+
+
 def _sanitize_conv_layout(model, weights):
-    from mlx.utils import tree_flatten
-    expected = {k: tuple(v.shape) for k, v in tree_flatten(model.parameters())}
-    for k in list(weights.keys()):
+    expected = parameter_shapes(model)
+    for k, perm in conv_weight_perms(model).items():
+        v = weights.get(k)
         exp = expected.get(k)
-        v = weights[k]
-        if exp is None or v.ndim != 4 or tuple(v.shape) == exp:
+        if v is None or exp is None or v.ndim != 4 or tuple(v.shape) == exp:
             continue
-        perm = (1, 2, 3, 0) if "dconv" in k else (0, 2, 3, 1)
         cand = mx.transpose(v, perm)
         if tuple(cand.shape) == exp:
             weights[k] = cand
@@ -308,16 +325,13 @@ def load_checkpoint(model, checkpoint_path):
             raise e
          
 
-def build_sam3_image_model(
+def build_sam3_image_model_skeleton(
     bpe_path=None,
-    checkpoint_path=None,
-    hf_repo=MLX_COMMUNITY_REPO,
-    local_weights_dir=None,
-    convert_from_pytorch=False,
     enable_segmentation=True,
     enable_inst_interactivity=False,
     compile=False
 ):
+    """Build the model with random weights — no checkpoint is downloaded or loaded."""
     if bpe_path is None:
         bpe_path = os.path.join(
             os.path.dirname(__file__), "..", "assets", "bpe_simple_vocab_16e6.txt.gz"
@@ -326,7 +340,7 @@ def build_sam3_image_model(
     vision_encoder = _create_vision_backbone(
         compile_mode=compile, enable_inst_interactivity=enable_inst_interactivity
     )
-    
+
     text_encoder = _create_text_encoder(bpe_path)
 
     backbone = _create_vl_backbone(vision_encoder, text_encoder)
@@ -343,12 +357,30 @@ def build_sam3_image_model(
 
     input_geometry_encoder = _create_geometry_encoder()
 
-    model = _create_sam3_model(
+    return _create_sam3_model(
         backbone,
         transformer,
         input_geometry_encoder,
         segmentation_head,
         dot_prod_scoring=dot_product_scoring
+    )
+
+
+def build_sam3_image_model(
+    bpe_path=None,
+    checkpoint_path=None,
+    hf_repo=MLX_COMMUNITY_REPO,
+    local_weights_dir=None,
+    convert_from_pytorch=False,
+    enable_segmentation=True,
+    enable_inst_interactivity=False,
+    compile=False
+):
+    model = build_sam3_image_model_skeleton(
+        bpe_path=bpe_path,
+        enable_segmentation=enable_segmentation,
+        enable_inst_interactivity=enable_inst_interactivity,
+        compile=compile,
     )
 
     if checkpoint_path is None:
