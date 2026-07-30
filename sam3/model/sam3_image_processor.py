@@ -95,6 +95,8 @@ class Sam3Processor:
         state["backbone_out"].update(text_outputs)
         if "geometric_prompt" not in state:
             state["geometric_prompt"] = self.model._get_dummy_prompt()
+        # single-prompt results carry no labels; drop any left over from set_text_prompts
+        state.pop("labels", None)
         return self._call_grounding(state)
 
     def set_text_prompts(self, prompts: List[str], state: Dict):
@@ -180,7 +182,7 @@ class Sam3Processor:
                 if key in state["backbone_out"]:
                     del state["backbone_out"][key]
 
-        keys_to_del = ["geometric_prompt", "boxes", "masks", "mask_logits", "semantic_seg", "scores"]
+        keys_to_del = ["geometric_prompt", "boxes", "masks", "mask_logits", "semantic_seg", "scores", "labels"]
         for key in keys_to_del:
             if key in state:
                 del state[key]
